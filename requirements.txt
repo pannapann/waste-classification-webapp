@@ -3,3 +3,4 @@ tensorflow
 streamlit
 streamlit-webrtc
 pillow
+opencv-python

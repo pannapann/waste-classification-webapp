@@ -2,9 +2,11 @@ import numpy as np
 import tensorflow as tf
 import streamlit as st
 from PIL import Image
-import io
 from tensorflow.keras.optimizers import Adam
-#from streamlit_webrtc import webrtc_streamer
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+import cv2
+import os
+import time
 
 model_variants = {
     "Original Model (h5)": "models/model.h5",
@@ -26,13 +28,13 @@ def load_keras_model(model_path):
 
 # Predict waste class using a Keras model
 def predict_waste_class_keras(model, image):
-    input_size = tuple(model.layers[0].input_shape[1:3])
+    input_size = tuple(model.layers[0].input_shape[1:3]) or (224, 224)
     image_preprocessed = load_and_preprocess_image(image, input_size)
     output_data = model.predict(image_preprocessed[np.newaxis, ...])
     prediction = np.argmax(output_data)
     return prediction
 
-def load_and_preprocess_image(image_path, target_size):
+def load_and_preprocess_image(image_path, target_size=(224, 224)):
     # Load the image using PIL
     img = Image.open(image_path)
     
@@ -42,14 +44,8 @@ def load_and_preprocess_image(image_path, target_size):
     # Convert the image to a NumPy array
     img_array = np.array(img)
     img_array = img_array / 255.0
-    
-    # Preprocess the image according to your model's requirements
-    # This step depends on your specific model and data
-    # For example, you may need to normalize the input data or convert it to grayscale
-    # img_preprocessed = preprocess_input_data(img_array)  # Replace with your preprocessing function
 
     return img_array
-# Predict waste class using a TFLite model
 
 def predict_waste_class_tflite(interpreter, image):
     input_details = interpreter.get_input_details()
@@ -63,6 +59,12 @@ def predict_waste_class_tflite(interpreter, image):
     output_data = interpreter.get_tensor(output_details[0]['index'])
     prediction = np.argmax(output_data)
     return prediction
+
+class VideoTransformer(VideoTransformerBase):
+    def recv(self, frame):
+        self.last_frame = frame.to_ndarray(format="bgr24")
+        return frame
+
 
 # Web app
 st.title("Waste Classification")
@@ -81,25 +83,39 @@ else:
 
 class_labels = ["cardboard", "glass", "metal", "paper", "plastic"]
 
-webrtc_ctx = webrtc_streamer(key="snapshot")
+
+webrtc_ctx = webrtc_streamer(key="snapshot", video_transformer_factory=VideoTransformer)
 
 if st.button("Capture Snapshot"):
-    if webrtc_ctx.video_receiver:
+    if webrtc_ctx.video_transformer:
         try:
-            snapshot_image = webrtc_ctx.video_receiver.to_image()
-            snapshot_image.save("snapshot.png")
+            snapshot_image_bgr = webrtc_ctx.video_transformer.last_frame
+            snapshot_image_rgb = cv2.cvtColor(snapshot_image_bgr, cv2.COLOR_BGR2RGB)
+            snapshot_image = Image.fromarray(snapshot_image_rgb)
+            snapshot_image.save("snapshot.jpg")
 
-            # Open the captured image
-            image = Image.open("snapshot.png")
-            st.image(image, caption="Snapshot", use_column_width=True)
+            st.image(snapshot_image, caption="Snapshot", use_column_width=True)
 
             # Predict waste class
             if predict_fn == predict_waste_class_keras:
-                prediction = predict_fn(model, image)
+                start_time = time.time()
+                prediction = predict_fn(model, "snapshot.jpg")
+                inference_time = time.time() - start_time
             else:
-                prediction = predict_fn(interpreter, image)
+                start_time = time.time()
+                prediction = predict_fn(interpreter, "snapshot.jpg")
+                inference_time = time.time() - start_time
                 
             st.success(f"Predicted waste class: {class_labels[prediction]}")
+
+            st.write(f"Inference time: {inference_time:.2f} seconds")
+            
+            file_path = model_variants[model_variant]
+            file_size_bytes = os.path.getsize(file_path)
+            file_size_mb = file_size_bytes / (1024 * 1024)
+            
+            st.write(f"Model size: {file_size_mb:.2f} MB")
+
 
         except Exception as e:
             st.error("Error: " + str(e))
