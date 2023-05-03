@@ -2,10 +2,6 @@
 
 This repository contains the code for a waste classification web application built with Streamlit. The application allows users to take a photo using a webcam connected to a Khadas VIM2 and classify the type of waste into 5 categories: cardboard, glass, metal, paper, and plastic.
 
-## Demo
-
-https://www.youtube.com/watch?v=GDHMAHjPOLw
-
 ## Getting Started
 
 To set up and run the web application, follow these steps:

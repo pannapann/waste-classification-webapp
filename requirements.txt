@@ -4,3 +4,4 @@ streamlit
 streamlit-webrtc
 pillow
 opencv-python
+onnxruntime
